@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import dotenv from 'dotenv'
+import authRoutes from './routes/auth.routes'
 
 dotenv.config()
 
@@ -9,9 +10,12 @@ const app = express()
 const PORT = process.env.PORT || 3001
 
 // Middlewares globales
-app.use(helmet())        // Headers de seguridad
-app.use(cors())          // Permite peticiones del frontend
-app.use(express.json())  // Parsea el body de las peticiones como JSON
+app.use(helmet())
+app.use(cors())
+app.use(express.json())
+
+// Rutas
+app.use('/api/auth', authRoutes)
 
 // Ruta de prueba
 app.get('/health', (req, res) => {
