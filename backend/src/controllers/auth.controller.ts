@@ -105,3 +105,74 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         res.status(500).json({ error: 'Error interno del servidor' })
     }
 }
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { refreshToken } = req.body
+
+        if (!refreshToken) {
+            res.status(400).json({ error: 'Refresh token requerido' })
+            return
+        }
+
+        // Eliminar el refresh token de la base de datos
+        await prisma.refreshToken.deleteMany({
+            where: { token: refreshToken }
+        })
+
+        res.json({ message: 'Logout exitoso' })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ error: 'Error interno del servidor' })
+    }
+}
+
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { refreshToken } = req.body
+
+        if (!refreshToken) {
+            res.status(400).json({ error: 'Refresh token requerido' })
+            return
+        }
+
+        // Verificar que el token es válido
+        const payload = jwt.verify(
+            refreshToken,
+            process.env.JWT_REFRESH_SECRET as string
+        ) as { userId: string }
+
+        // Verificar que existe en la base de datos y no ha expirado
+        const storedToken = await prisma.refreshToken.findUnique({
+            where: { token: refreshToken }
+        })
+
+        if (!storedToken || storedToken.expiresAt < new Date()) {
+            res.status(401).json({ error: 'Refresh token inválido o expirado' })
+            return
+        }
+
+        // Buscar el usuario
+        const user = await prisma.user.findUnique({
+            where: { id: payload.userId }
+        })
+
+        if (!user) {
+            res.status(401).json({ error: 'Usuario no encontrado' })
+            return
+        }
+
+        // Generar nuevo access token
+        const accessToken = jwt.sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_ACCESS_SECRET as string,
+            { expiresIn: '15m' }
+        )
+
+        res.json({ accessToken })
+
+    } catch (error) {
+        res.status(401).json({ error: 'Refresh token inválido' })
+    }
+}
