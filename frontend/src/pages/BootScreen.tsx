@@ -1,384 +1,507 @@
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import WorldMap from 'react-svg-worldmap'
+import { useScrollReveal } from '../hooks/useScrollReveal'
+import type { ReactNode } from 'react'
+import { useActiveSection } from '../hooks/useActiveSection'
+import { SectionBackground } from '../components/SectionBackground'
+import { useState } from 'react'
 
-const BOOT_LOGS = [
-    '[OK] Initializing TitiGuard kernel...',
-    '[OK] Loading encryption modules (AES-256)...',
-    '[OK] Mounting secure vault filesystem...',
-    '[OK] Establishing connection to auth server...',
-    '[OK] Verifying system integrity...',
-    '[OK] Starting JWT token service...',
-    '[OK] Loading 2FA protocol (TOTP)...',
-    '[READY] All systems operational.',
-]
-
-const ASCII_LOGO = `
- ████████╗██╗████████╗██╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗ 
-╚══██╔══╝██║╚══██╔══╝██║██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗
-   ██║   ██║   ██║   ██║██║  ███╗██║   ██║███████║██████╔╝██║  ██║
-   ██║   ██║   ██║   ██║██║   ██║██║   ██║██╔══██║██╔══██╗██║  ██║
-   ██║   ██║   ██║   ██║╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝
-   ╚═╝   ╚═╝   ╚═╝   ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ 
-`
-
-const ACTIVITY_FEED = [
-    'auth.session.created — node-us-east-1',
-    'vault.entry.encrypted — AES-256-GCM',
-    'token.refresh — exp 900s',
-    '2fa.totp.verified — node-eu-west-2',
-    'db.query — neon.tech [12ms]',
-    'cipher.handshake — established',
-]
-
-function useTypewriter(lines: string[], speed = 18) {
-    const [visibleLines, setVisibleLines] = useState<string[]>([])
-    const [currentLine, setCurrentLine] = useState('')
-    const [done, setDone] = useState(false)
-
-    useEffect(() => {
-        let lineIndex = 0
-        let charIndex = 0
-
-        const interval = setInterval(() => {
-            if (lineIndex >= lines.length) {
-                clearInterval(interval)
-                setDone(true)
-                return
-            }
-
-            const fullLine = lines[lineIndex]
-
-            if (charIndex < fullLine.length) {
-                setCurrentLine(fullLine.slice(0, charIndex + 1))
-                charIndex++
-            } else {
-                setVisibleLines(prev => [...prev, fullLine])
-                setCurrentLine('')
-                lineIndex++
-                charIndex = 0
-            }
-        }, speed)
-
-        return () => clearInterval(interval)
-    }, [])
-
-    return { visibleLines, currentLine, done }
-}
-
-function useCounter(target: number, durationMs: number) {
-    const [value, setValue] = useState(0)
-
-    useEffect(() => {
-        const steps = 30
-        const stepValue = target / steps
-        let current = 0
-
-        const interval = setInterval(() => {
-            current++
-            setValue(Math.min(Math.round(stepValue * current), target))
-            if (current >= steps) clearInterval(interval)
-        }, durationMs / steps)
-
-        return () => clearInterval(interval)
-    }, [target, durationMs])
-
-    return value
-}
-
-function StatBar({ label, value }: { label: string; value: number }) {
-    return (
-        <div className="mb-3">
-            <div className="flex justify-between text-xs text-green-500 mb-1">
-                <span>{label}</span>
-                <span>{value}%</span>
-            </div>
-            <div className="w-full h-1.5 bg-green-900/30 rounded-full overflow-hidden">
-                <div
-                    className="h-full bg-green-400 transition-all duration-300"
-                    style={{ width: `${value}%` }}
-                />
-            </div>
-        </div>
-    )
-}
-
-function NetworkMap() {
-    const data = [
-        { country: 'us', value: 100 },
-        { country: 'gb', value: 80 },
-        { country: 'de', value: 75 },
-        { country: 'in', value: 60 },
-        { country: 'br', value: 50 },
-        { country: 'jp', value: 55 },
-        { country: 'au', value: 40 },
-    ]
-
-    return (
-        <div className="relative flex justify-center items-center w-full">
-            <WorldMap
-                color="rgb(74 222 128)"
-                backgroundColor="transparent"
-                size="responsive"
-                data={data}
-                tooltipBgColor="black"
-                tooltipTextColor="rgb(74 222 128)"
-                borderColor="rgb(34 100 60)"
-                styleFunction={() => ({
-                    fill: 'rgb(20 60 40)',
-                    stroke: 'rgb(34 100 60)',
-                    strokeWidth: 0.5,
-                })}
-            />
-            <TrafficOverlay />
-        </div>
-    )
-}
-
-function HexDump() {
-    const [rows, setRows] = useState<string[]>([])
-
-    useEffect(() => {
-        const generateRow = () => {
-            const bytes = Array.from({ length: 8 }, () =>
-                Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-            )
-            return bytes.join(' ')
-        }
-
-        setRows(Array.from({ length: 6 }, generateRow))
-
-        const interval = setInterval(() => {
-            setRows(prev => {
-                const next = [...prev.slice(1), generateRow()]
-                return next
-            })
-        }, 400)
-
-        return () => clearInterval(interval)
-    }, [])
-
-    return (
-        <div className="text-xs text-green-800 leading-relaxed">
-            {rows.map((row, i) => (
-                <div key={i}>0x{(i * 8).toString(16).padStart(4, '0')}  {row}</div>
-            ))}
-        </div>
-    )
-}
-
-function IpEncryption() {
-    const [ips, setIps] = useState<{ ip: string; progress: number }[]>([])
-
-    const randomIp = () =>
-        `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
-
-    useEffect(() => {
-        setIps(Array.from({ length: 4 }, () => ({ ip: randomIp(), progress: 0 })))
-
-        const interval = setInterval(() => {
-            setIps(prev =>
-                prev.map(item => {
-                    const next = item.progress + Math.floor(Math.random() * 15) + 5
-                    if (next >= 100) {
-                        return { ip: randomIp(), progress: 0 }
-                    }
-                    return { ...item, progress: next }
-                })
-            )
-        }, 350)
-
-        return () => clearInterval(interval)
-    }, [])
-
-    return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {ips.map((item, i) => (
-                <div key={i} className="text-xs">
-                    <div className="flex justify-between text-green-500 mb-1">
-                        <span>{item.ip}</span>
-                        <span>{item.progress}%</span>
-                    </div>
-                    <div className="w-full h-1 bg-green-900/30 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-green-400 transition-all duration-200"
-                            style={{ width: `${item.progress}%` }}
-                        />
-                    </div>
-                </div>
-            ))}
-        </div>
-    )
-}
-
-const CONNECTION_POINTS: Record<string, { x: number; y: number }> = {
-    ecuador:  { x: 29, y: 41 },
-    noruega:  { x: 53, y: 23 },
-    rusia:    { x: 77, y: 25 },
-    brasil:   { x: 36, y: 44 },
-    india:    { x: 72, y: 36 },
-    canada:   { x: 21, y: 26 },
-    usa:      { x: 23, y: 31 },
-    china:    { x: 80, y: 33 },
-    italia:   { x: 54, y: 31 },
-    mexico:   { x: 22, y: 36 },
-}
-
-const TRAFFIC_ROUTES: [string, string][] = [
-    ['ecuador', 'noruega'],
-    ['brasil', 'rusia'],
-    ['canada', 'india'],
-    ['usa', 'china'],
-    ['italia', 'mexico'],
-]
-
-function TrafficOverlay() {
-    return (
-        <svg
-            viewBox="0 0 100 60"
-            preserveAspectRatio="none"
-            className="absolute inset-0 w-full h-full pointer-events-none"
-        >
-            {TRAFFIC_ROUTES.map(([from, to], i) => {
-                const a = CONNECTION_POINTS[from]
-                const b = CONNECTION_POINTS[to]
-                return (
-                    <line
-                        key={i}
-                        x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                        stroke="rgb(74 222 128)"
-                        strokeWidth="0.3"
-                        strokeDasharray="1.5 1.5"
-                        opacity="0.7"
-                    >
-                        <animate
-                            attributeName="stroke-dashoffset"
-                            from="0" to="-6"
-                            dur={`${1 + i * 0.3}s`}
-                            repeatCount="indefinite"
-                        />
-                    </line>
-                )
-            })}
-            {Object.values(CONNECTION_POINTS).map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r="0.8" fill="rgb(134 239 172)">
-                    <animate
-                        attributeName="opacity"
-                        values="0.5;1;0.5"
-                        dur={`${1.2 + (i % 3) * 0.4}s`}
-                        repeatCount="indefinite"
-                    />
-                </circle>
-            ))}
-        </svg>
-    )
-}
-
-function ActivityTicker() {
-    const [index, setIndex] = useState(0)
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setIndex(prev => (prev + 1) % ACTIVITY_FEED.length)
-        }, 1800)
-        return () => clearInterval(interval)
-    }, [])
-
-    return (
-        <div className="text-xs space-y-1.5">
-            {ACTIVITY_FEED.map((line, i) => {
-                const isActive = i === index
-                return (
-                    <p
-                        key={i}
-                        className={isActive ? 'text-green-300' : 'text-green-700'}
-                    >
-                        {isActive ? '> ' : '  '}{line}
-                    </p>
-                )
-            })}
-        </div>
-    )
-}
-
-export default function BootScreen() {
+function Header() {
     const navigate = useNavigate()
-    const { visibleLines, currentLine, done } = useTypewriter(BOOT_LOGS)
 
-    const cpu = useCounter(34, 2000)
-    const mem = useCounter(58, 2200)
-    const net = useCounter(91, 1800)
+    return (
+        <header
+            className="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 md:px-12 py-4"
+            style={{
+                background: 'rgba(10, 10, 12, 0.7)',
+                backdropFilter: 'blur(20px)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+        >
+            <div className="flex items-center gap-2">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L4 6V12C4 16.5 7.5 20.5 12 22C16.5 20.5 20 16.5 20 12V6L12 2Z" stroke="#a896e8" strokeWidth="1.5" strokeLinejoin="round" />
+                    <path d="M9 12L11 14L15 10" stroke="#a896e8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="font-semibold text-base" style={{ color: '#f5f5f7' }}>TitiGuard</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+                <button
+                    onClick={() => navigate('/login')}
+                    className="text-sm font-medium px-4 py-2 rounded-xl transition-colors hover:bg-white/5"
+                    style={{ color: '#f5f5f7' }}
+                >
+                    Iniciar sesión
+                </button>
+                <button
+                    onClick={() => navigate('/register')}
+                    className="text-sm font-medium px-4 py-2 rounded-xl transition-opacity hover:opacity-90"
+                    style={{ background: '#6e56cf', color: '#ffffff' }}
+                >
+                    Crear cuenta
+                </button>
+            </div>
+        </header>
+    )
+}
+
+function Hero() {
+    const navigate = useNavigate()
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center text-center px-6 relative z-10">
+      <span
+          className="inline-block text-xs font-medium px-3 py-1 rounded-full mb-6"
+          style={{
+              background: 'rgba(110, 86, 207, 0.15)',
+              color: '#a896e8',
+              border: '1px solid rgba(110, 86, 207, 0.3)',
+          }}
+      >
+        Proyecto · v1.0
+      </span>
+
+            <h1
+                className="text-6xl md:text-7xl font-bold mb-6 max-w-3xl"
+                style={{ color: '#f5f5f7', letterSpacing: '-0.03em', lineHeight: 1.05 }}
+            >
+                Tu bóveda de contraseñas,<br />sin compromisos.
+            </h1>
+
+            <p className="text-xl mb-10 leading-relaxed max-w-xl" style={{ color: '#86868b' }}>
+                Cifrado AES-256 de extremo a extremo, autenticación en dos factores
+                y control total sobre tus credenciales. Tu contraseña maestra nunca
+                sale de tu navegador.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                    onClick={() => navigate('/register')}
+                    className="px-8 py-4 rounded-2xl font-semibold text-base transition-all hover:opacity-90 hover:scale-105"
+                    style={{
+                        background: '#6e56cf',
+                        color: '#ffffff',
+                        boxShadow: '0 0 30px rgba(110, 86, 207, 0.4)',
+                        transition: 'all 0.3s ease',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 50px rgba(110, 86, 207, 0.7)')}
+                    onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 0 30px rgba(110, 86, 207, 0.4)')}
+                >
+                    Crear cuenta gratis
+                </button>
+                <button
+                    onClick={() => navigate('/login')}
+                    className="px-8 py-4 rounded-2xl font-semibold text-base"
+                    style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#f5f5f7',
+                        transition: 'all 0.3s ease',
+                    }}
+                    onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+                        e.currentTarget.style.transform = 'scale(1.05)'
+                    }}
+                    onMouseLeave={e => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                        e.currentTarget.style.transform = 'scale(1)'
+                    }}
+                >
+                    Ya tengo cuenta
+                </button>
+            </div>
+        </section>
+    )
+}
+
+function GlowCard({ children, glowColor = '#6e56cf' }: { children: React.ReactNode; glowColor?: string }) {
+    const [hovered, setHovered] = useState(false)
 
     return (
         <div
-            className="min-h-screen bg-black text-green-400 p-6 flex flex-col"
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            className="p-6 rounded-2xl cursor-default"
+            style={{
+                background: hovered ? `rgba(110, 86, 207, 0.08)` : 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(20px)',
+                border: hovered ? `1px solid ${glowColor}44` : '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: hovered ? `0 0 40px ${glowColor}22` : 'none',
+                transform: hovered ? 'scale(1.02)' : 'scale(1)',
+                transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
         >
-      <pre className="text-green-500 text-xs sm:text-sm mb-6 leading-tight overflow-x-auto">
-        {ASCII_LOGO}
-      </pre>
+            {children}
+        </div>
+    )
+}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+function FeatureCard({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+    const { ref, isVisible } = useScrollReveal()
 
-                <div className="border border-green-900/50 rounded-lg p-4 bg-black/40 flex flex-col">
-                    <p className="text-green-600 text-xs mb-2">/var/log/titiguard/boot.log</p>
-                    <div className="text-sm leading-relaxed">
-                        {visibleLines.map((line, i) => (
-                            <div key={i}>{line}</div>
-                        ))}
-                        <div>{currentLine}<span className="animate-pulse">▋</span></div>
+    return (
+        <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''}`}>
+            <GlowCard>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(110, 86, 207, 0.15)' }}>
+                    {icon}
+                </div>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: '#f5f5f7' }}>{title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: '#86868b' }}>{description}</p>
+            </GlowCard>
+        </div>
+    )
+}
+
+function Features() {
+    const { ref, isVisible } = useScrollReveal()
+
+    const features = [
+        {
+            title: 'Cifrado AES-256',
+            description: 'Tus contraseñas se cifran en el navegador antes de salir de tu equipo. Ni el servidor las ve en texto plano.',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="#a896e8" strokeWidth="1.5" /><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#a896e8" strokeWidth="1.5" /></svg>,
+        },
+        {
+            title: 'Autenticación 2FA',
+            description: 'Capa extra de seguridad con códigos TOTP, compatible con Google Authenticator y apps similares.',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="18" rx="2" stroke="#a896e8" strokeWidth="1.5" /><circle cx="12" cy="17" r="1" fill="#a896e8" /></svg>,
+        },
+        {
+            title: 'Organización inteligente',
+            description: 'Carpetas, categorías y búsqueda instantánea para encontrar cualquier credencial en segundos.',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 7h6l2 2h10v10H3V7Z" stroke="#a896e8" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
+        },
+        {
+            title: 'Auditoría de seguridad',
+            description: 'Detecta automáticamente contraseñas débiles, repetidas o desactualizadas en tu bóveda.',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 6V12C4 16.5 7.5 20.5 12 22C16.5 20.5 20 16.5 20 12V6L12 2Z" stroke="#a896e8" strokeWidth="1.5" strokeLinejoin="round" /><path d="M9 12L11 14L15 10" stroke="#a896e8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+        },
+    ]
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 md:px-12 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} text-center mb-10 w-full max-w-5xl`}>
+                <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: '#f5f5f7', letterSpacing: '-0.02em' }}>
+                    Seguridad sin fricción
+                </h2>
+                <p className="text-lg max-w-lg mx-auto" style={{ color: '#86868b' }}>
+                    Todo lo necesario para proteger tus credenciales, en un solo lugar.
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-5xl">
+                {features.map((f, i) => (
+                    <FeatureCard key={i} icon={f.icon} title={f.title} description={f.description} />
+                ))}
+            </div>
+        </section>
+    )
+}
+
+function TechCard({ name, role, color }: { name: string; role: string; color: string }) {
+    const { ref, isVisible } = useScrollReveal()
+    const [hovered, setHovered] = useState(false)
+
+    return (
+        <div
+            ref={ref}
+            className={`reveal ${isVisible ? 'visible' : ''} p-5 rounded-2xl flex items-center gap-4 cursor-default`}
+            style={{
+                background: hovered ? `rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, 0.08)` : 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(20px)',
+                border: hovered ? `1px solid ${color}44` : '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: hovered ? `0 0 30px ${color}22` : 'none',
+                transform: hovered ? 'scale(1.03)' : 'scale(1)',
+                transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+        >
+            <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base flex-shrink-0"
+                style={{
+                    background: `${color}22`,
+                    color,
+                    boxShadow: hovered ? `0 0 20px ${color}44` : 'none',
+                    transition: 'all 0.3s ease',
+                }}
+            >
+                {name.charAt(0)}
+            </div>
+            <div>
+                <p className="text-sm font-semibold" style={{ color: '#f5f5f7' }}>{name}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#86868b' }}>{role}</p>
+            </div>
+        </div>
+    )
+}
+
+function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
+    return (
+        <GlowCard>
+            <div className="flex gap-4 items-start">
+                <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center font-semibold text-sm flex-shrink-0"
+                    style={{ background: 'rgba(110, 86, 207, 0.15)', color: '#a896e8' }}
+                >
+                    {number}
+                </div>
+                <div>
+                    <h3 className="text-base font-semibold mb-1" style={{ color: '#f5f5f7' }}>{title}</h3>
+                    <p className="text-sm leading-relaxed" style={{ color: '#86868b' }}>{description}</p>
+                </div>
+            </div>
+        </GlowCard>
+    )
+}
+
+function TechStack() {
+    const { ref, isVisible } = useScrollReveal()
+
+    const stack = [
+        { name: 'React 18', role: 'Interfaz reactiva y componentes reutilizables con hooks modernos', color: '#61dafb' },
+        { name: 'TypeScript', role: 'Tipado estático que previene errores en tiempo de compilación', color: '#3178c6' },
+        { name: 'Node.js', role: 'Runtime de JavaScript del lado del servidor, veloz y escalable', color: '#83cd29' },
+        { name: 'Express', role: 'Framework minimalista para construir APIs REST robustas', color: '#a896e8' },
+        { name: 'PostgreSQL', role: 'Base de datos relacional alojada en Neon.tech con SSL', color: '#336791' },
+        { name: 'Prisma', role: 'ORM type-safe que genera queries seguros desde el schema', color: '#5a67d8' },
+        { name: 'JWT', role: 'Tokens firmados para autenticación sin estado en el servidor', color: '#fb015b' },
+        { name: 'AES-256', role: 'Cifrado simétrico estándar militar para proteger credenciales', color: '#f5a623' },
+        { name: 'bcrypt', role: 'Hashing seguro de contraseñas con salt aleatorio', color: '#68d391' },
+        { name: 'Tailwind CSS', role: 'Framework de utilidades CSS para diseño rápido y consistente', color: '#38bdf8' },
+        { name: 'Vite', role: 'Bundler ultrarrápido con hot-reload instantáneo en desarrollo', color: '#646cff' },
+        { name: 'speakeasy', role: 'Generación y verificación de códigos TOTP para el 2FA', color: '#f6ad55' },
+    ]
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 md:px-12 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} text-center mb-10 w-full max-w-6xl`}>
+                <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: '#f5f5f7', letterSpacing: '-0.02em' }}>
+                    Construido con tecnología real
+                </h2>
+                <p className="text-lg max-w-lg mx-auto" style={{ color: '#86868b' }}>
+                    Un stack moderno, robusto y completamente open source.
+                </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl">
+                {stack.map((tech, i) => (
+                    <TechCard key={i} name={tech.name} role={tech.role} color={tech.color} />
+                ))}
+            </div>
+        </section>
+    )
+}
+
+function HowItWorks() {
+    const { ref, isVisible } = useScrollReveal()
+
+    const steps = [
+        { title: 'Crea tu cuenta', description: 'Regístrate con tu email. Tu contraseña maestra nunca se envía al servidor — solo tú la conoces.' },
+        { title: 'Activa el 2FA', description: 'Escanea el código QR con Google Authenticator para agregar una capa extra de protección a tu bóveda.' },
+        { title: 'Guarda tus credenciales', description: 'Cada contraseña se cifra con AES-256 en tu navegador antes de enviarse. El servidor solo recibe datos cifrados.' },
+        { title: 'Organiza tu bóveda', description: 'Crea carpetas y categorías para mantener tus credenciales ordenadas y fáciles de encontrar.' },
+        { title: 'Genera contraseñas seguras', description: 'Usa el generador integrado para crear contraseñas fuertes y únicas para cada sitio.' },
+        { title: 'Audita tu seguridad', description: 'Detecta automáticamente contraseñas débiles, repetidas o que llevan mucho tiempo sin actualizarse.' },
+    ]
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} w-full max-w-5xl`}>
+                <div className="text-center mb-10">
+                    <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: '#f5f5f7', letterSpacing: '-0.02em' }}>
+                        Cómo funciona
+                    </h2>
+                    <p className="text-lg" style={{ color: '#86868b' }}>Seis pasos para tener tus contraseñas completamente protegidas.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {steps.map((s, i) => (
+                        <StepCard key={i} number={String(i + 1).padStart(2, '0')} title={s.title} description={s.description} />
+                    ))}
+                </div>
+            </div>
+        </section>
+    )
+}
+
+function SecuritySection() {
+    const { ref, isVisible } = useScrollReveal()
+
+    const items = [
+        { title: 'Zero-knowledge architecture', description: 'El servidor nunca recibe tu contraseña maestra ni tus credenciales en texto plano. El cifrado ocurre 100% en tu navegador.' },
+        { title: 'AES-256-GCM client-side', description: 'Usamos el estándar de cifrado simétrico más robusto disponible, con claves derivadas localmente desde tu contraseña maestra.' },
+        { title: 'JWT + Refresh Token rotation', description: 'Access tokens de vida corta (15 min) combinados con refresh tokens de 7 días, renovados automáticamente sin interrumpir tu sesión.' },
+        { title: 'TOTP 2FA compatible', description: 'Códigos de un solo uso basados en tiempo (RFC 6238), compatibles con Google Authenticator, Authy y cualquier app TOTP estándar.' },
+        { title: 'bcrypt password hashing', description: 'Las contraseñas de acceso se hashean con bcrypt antes de guardarse. Nunca se almacenan en texto plano en la base de datos.' },
+        { title: 'Rate limiting', description: 'Protección contra ataques de fuerza bruta con límites de peticiones por IP en todos los endpoints de autenticación.' },
+    ]
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} w-full max-w-5xl`}>
+                <div className="text-center mb-10">
+                    <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: '#f5f5f7', letterSpacing: '-0.02em' }}>
+                        Seguridad técnica real
+                    </h2>
+                    <p className="text-lg" style={{ color: '#86868b' }}>No es marketing — así funciona el cifrado bajo el capó.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {items.map((item, i) => (
+                        <GlowCard key={i}>
+                            <p className="text-sm font-semibold mb-2" style={{ color: '#a896e8' }}>{item.title}</p>
+                            <p className="text-sm leading-relaxed" style={{ color: '#86868b' }}>{item.description}</p>
+                        </GlowCard>
+                    ))}
+                </div>
+            </div>
+        </section>
+    )
+}
+
+function ComparisonSection() {
+    const { ref, isVisible } = useScrollReveal()
+
+    const rows = [
+        { feature: 'Cifrado de extremo a extremo', titiGuard: true, browser: false },
+        { feature: 'Autenticación 2FA', titiGuard: true, browser: false },
+        { feature: 'Contraseña maestra privada', titiGuard: true, browser: false },
+        { feature: 'Auditoría de seguridad', titiGuard: true, browser: false },
+        { feature: 'Acceso multi-dispositivo', titiGuard: true, browser: true },
+        { feature: 'Generador de contraseñas', titiGuard: true, browser: true },
+    ]
+
+    const Check = () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" fill="rgba(110, 86, 207, 0.2)" />
+            <path d="M8 12L11 15L16 9" stroke="#a896e8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    )
+
+    const Cross = () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.04)" />
+            <path d="M9 9L15 15M15 9L9 15" stroke="#444" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    )
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} w-full max-w-3xl`}>
+                <div className="text-center mb-12">
+                    <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: '#f5f5f7', letterSpacing: '-0.02em' }}>
+                        ¿Por qué no el navegador?
+                    </h2>
+                    <p className="text-lg" style={{ color: '#86868b' }}>Tu navegador guarda contraseñas. TitiGuard las protege.</p>
+                </div>
+                <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="grid grid-cols-3 px-6 py-3 text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.04)', color: '#86868b' }}>
+                        <span>Característica</span>
+                        <span className="text-center" style={{ color: '#a896e8' }}>TitiGuard</span>
+                        <span className="text-center">Navegador</span>
                     </div>
-
-                    {done && (
-                        <div className="mt-6 flex gap-4">
-                            <button
-                                onClick={() => navigate('/login')}
-                                className="border border-green-500 text-green-400 px-6 py-2 rounded hover:bg-green-500 hover:text-black transition-colors text-sm"
-                            >
-                                [ LOGIN ]
-                            </button>
-                            <button
-                                onClick={() => navigate('/register')}
-                                className="border border-green-500 text-green-400 px-6 py-2 rounded hover:bg-green-500 hover:text-black transition-colors text-sm"
-                            >
-                                [ REGISTER ]
-                            </button>
+                    {rows.map((row, i) => (
+                        <div key={i} className="grid grid-cols-3 px-6 py-4 items-center text-sm" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', color: '#86868b' }}>
+                            <span>{row.feature}</span>
+                            <span className="flex justify-center">{row.titiGuard ? <Check /> : <Cross />}</span>
+                            <span className="flex justify-center">{row.browser ? <Check /> : <Cross />}</span>
                         </div>
-                    )}
+                    ))}
                 </div>
-
-                <div className="border border-green-900/50 rounded-lg p-4 bg-black/40 flex flex-col">
-                    <p className="text-green-600 text-xs mb-2 text-center">GLOBAL NETWORK MAP</p>
-                    <div className="flex-1 flex items-center">
-                        <NetworkMap />
-                    </div>
-                </div>
-
-                <div className="border border-green-900/50 rounded-lg p-4 bg-black/40 flex flex-col">
-                    <p className="text-green-600 text-xs mb-3">SYSTEM STATUS</p>
-                    <StatBar label="CPU" value={cpu} />
-                    <StatBar label="MEMORY" value={mem} />
-                    <StatBar label="NETWORK" value={net} />
-
-                    <p className="text-green-600 text-xs mt-6 mb-2">CONNECTIONS</p>
-                    <p className="text-xs text-green-400">neon.tech ... <span className="text-green-300">OK</span></p>
-                    <p className="text-xs text-green-400">jwt-service ... <span className="text-green-300">OK</span></p>
-                    <p className="text-xs text-green-400">vault-cipher ... <span className="text-green-300">OK</span></p>
-
-                    <p className="text-green-600 text-xs mt-6 mb-2">ACTIVITY FEED</p>
-                    <ActivityTicker />
-
-                    <p className="text-green-600 text-xs mt-6 mb-2">MEMORY DUMP</p>
-                    <HexDump />
-                </div>
-
             </div>
+        </section>
+    )
+}
 
-            <div className="mt-4 border border-green-900/50 rounded-lg p-4 bg-black/40">
-                <p className="text-green-600 text-xs mb-2">ENCRYPTING TRAFFIC</p>
-                <IpEncryption />
+function Footer() {
+    const { ref, isVisible } = useScrollReveal()
+
+    return (
+        <section className="w-full h-full flex flex-col items-center justify-center px-6 relative z-10">
+            <div ref={ref} className={`reveal ${isVisible ? 'visible' : ''} w-full max-w-4xl text-center`}>
+                <div className="flex items-center justify-center gap-2 mb-4">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 2L4 6V12C4 16.5 7.5 20.5 12 22C16.5 20.5 20 16.5 20 12V6L12 2Z" stroke="#a896e8" strokeWidth="1.5" strokeLinejoin="round" />
+                        <path d="M9 12L11 14L15 10" stroke="#a896e8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span className="font-semibold text-base" style={{ color: '#f5f5f7' }}>TitiGuard</span>
+                </div>
+
+                <p className="text-sm mb-6" style={{ color: '#86868b' }}>
+                    Proyecto académico full-stack · Desarrollado con React, Node.js, PostgreSQL y cifrado AES-256.
+                </p>
+
+                <div className="flex items-center justify-center gap-6 mb-8">
+                    <a href="https://github.com/AJJL2712/TitiGuard" target="_blank" rel="noopener noreferrer" className="text-sm transition-colors hover:text-white" style={{ color: '#86868b' }}>
+                        GitHub
+                    </a>
+                    <span style={{ color: '#333' }}>·</span>
+                    <span className="text-sm" style={{ color: '#86868b' }}>v1.0.0</span>
+                    <span style={{ color: '#333' }}>·</span>
+                    <span className="text-sm" style={{ color: '#86868b' }}>2026</span>
+                </div>
+
+                <div className="w-full h-px mb-6" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <p className="text-xs" style={{ color: '#444' }}>
+                    Construido para aprender · No almacena datos en producción
+                </p>
             </div>
+        </section>
+    )
+}
 
+const SECTION_BACKGROUNDS = [
+    '#0a0a0c',
+    '#0d0a14',
+    '#0a0c14',
+    '#0c0a14',
+    '#0a0c10',
+    '#0a0a0c',
+    '#0a0a0c',
+]
+
+export default function BootScreen() {
+    const { activeIndex, setRef } = useActiveSection(7)
+
+    return (
+        <div
+            style={{
+                fontFamily: "'Inter', sans-serif",
+                backgroundColor: SECTION_BACKGROUNDS[activeIndex],
+                transition: 'background-color 0.6s ease',
+            }}
+        >
+            <Header />
+
+            <div className="snap-container">
+                <div ref={setRef(0)} className="snap-section relative">
+                    <SectionBackground variant={0} />
+                    <Hero />
+                </div>
+                <div ref={setRef(1)} className="snap-section relative">
+                    <SectionBackground variant={1} />
+                    <Features />
+                </div>
+                <div ref={setRef(2)} className="snap-section relative">
+                    <SectionBackground variant={2} />
+                    <TechStack />
+                </div>
+                <div ref={setRef(3)} className="snap-section relative">
+                    <SectionBackground variant={3} />
+                    <HowItWorks />
+                </div>
+                <div ref={setRef(4)} className="snap-section relative">
+                    <SectionBackground variant={4} />
+                    <SecuritySection />
+                </div>
+                <div ref={setRef(5)} className="snap-section relative">
+                    <SectionBackground variant={5} />
+                    <ComparisonSection />
+                </div>
+                <div ref={setRef(6)} className="snap-section relative">
+                    <SectionBackground variant={6} />
+                    <Footer />
+                </div>
+            </div>
         </div>
     )
 }
