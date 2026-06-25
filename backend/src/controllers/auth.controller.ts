@@ -2,6 +2,9 @@ import { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import prisma from '../utils/prisma'
+import speakeasy from 'speakeasy'
+import QRCode from 'qrcode'
+import { AuthRequest } from '../middlewares/auth.middleware'
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -174,5 +177,134 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
 
     } catch (error) {
         res.status(401).json({ error: 'Refresh token inválido' })
+    }
+}
+
+export const generate2FA = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user?.userId
+
+        const secret = speakeasy.generateSecret({
+            name: `TitiGuard (${req.user?.email})`,
+            length: 20,
+        })
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorSecret: secret.base32 },
+        })
+
+        const qrCode = await QRCode.toDataURL(secret.otpauth_url as string)
+
+        res.json({
+            secret: secret.base32,
+            qrCode,
+        })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ error: 'Error interno del servidor' })
+    }
+}
+
+export const verify2FA = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user?.userId
+        const { code } = req.body
+
+        if (!code) {
+            res.status(400).json({ error: 'Código requerido' })
+            return
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+
+        if (!user?.twoFactorSecret) {
+            res.status(400).json({ error: '2FA no iniciado' })
+            return
+        }
+
+        const valid = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token: code,
+            window: 1,
+        })
+
+        if (!valid) {
+            res.status(400).json({ error: 'Código inválido' })
+            return
+        }
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorEnabled: true },
+        })
+
+        res.json({ message: '2FA activado correctamente' })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ error: 'Error interno del servidor' })
+    }
+}
+
+export const validate2FA = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { userId, code } = req.body
+
+        if (!userId || !code) {
+            res.status(400).json({ error: 'userId y código son requeridos' })
+            return
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+
+        if (!user?.twoFactorSecret) {
+            res.status(400).json({ error: '2FA no configurado' })
+            return
+        }
+
+        const valid = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token: code,
+            window: 1,
+        })
+
+        if (!valid) {
+            res.status(400).json({ error: 'Código inválido' })
+            return
+        }
+
+        const accessToken = jwt.sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_ACCESS_SECRET as string,
+            { expiresIn: '15m' }
+        )
+
+        const refreshToken = jwt.sign(
+            { userId: user.id },
+            process.env.JWT_REFRESH_SECRET as string,
+            { expiresIn: '7d' }
+        )
+
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + 7)
+
+        await prisma.refreshToken.create({
+            data: { token: refreshToken, userId: user.id, expiresAt }
+        })
+
+        res.json({
+            message: 'Login exitoso',
+            accessToken,
+            refreshToken,
+            user: { id: user.id, email: user.email },
+        })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ error: 'Error interno del servidor' })
     }
 }
