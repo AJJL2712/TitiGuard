@@ -16,5 +16,10 @@ export const authService = {
     logout: async (refreshToken: string) => {
         const response = await api.post(`${API_URL}/logout`, { refreshToken })
         return response.data
-    }
+    },
+
+    validate2FA: async (userId: string, code: string) => {
+        const response = await api.post(`${API_URL}/2fa/validate`, { userId, code })
+        return response.data
+    },
 }

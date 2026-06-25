@@ -57,9 +57,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email }
-        })
+        const user = await prisma.user.findUnique({ where: { email } })
 
         if (!user) {
             res.status(401).json({ error: 'Credenciales incorrectas' })
@@ -73,6 +71,16 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return
         }
 
+        // Si tiene 2FA activo, no devolvemos tokens aún
+        if (user.twoFactorEnabled) {
+            res.json({
+                requiresTwoFactor: true,
+                userId: user.id,
+            })
+            return
+        }
+
+        // Sin 2FA, flujo normal
         const accessToken = jwt.sign(
             { userId: user.id, email: user.email },
             process.env.JWT_ACCESS_SECRET as string,
@@ -89,18 +97,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         expiresAt.setDate(expiresAt.getDate() + 7)
 
         await prisma.refreshToken.create({
-            data: {
-                token: refreshToken,
-                userId: user.id,
-                expiresAt
-            }
+            data: { token: refreshToken, userId: user.id, expiresAt }
         })
 
         res.json({
             message: 'Login exitoso',
             accessToken,
             refreshToken,
-            user: { id: user.id, email: user.email }
+            user: { id: user.id, email: user.email },
         })
 
     } catch (error) {
