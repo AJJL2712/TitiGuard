@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { register, login, refresh, logout, generate2FA, verify2FA, validate2FA } from '../controllers/auth.controller'
 import { authenticate } from '../middlewares/auth.middleware'
+import { register, login, refresh, logout, generate2FA, verify2FA, validate2FA, getProfile } from '../controllers/auth.controller'
 
 const router = Router()
 
@@ -17,3 +17,5 @@ router.post('/2fa/verify', authenticate, verify2FA)
 router.post('/2fa/validate', validate2FA)
 
 export default router
+
+router.get('/profile', authenticate, getProfile)

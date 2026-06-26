@@ -312,3 +312,28 @@ export const validate2FA = async (req: Request, res: Response): Promise<void> =>
         res.status(500).json({ error: 'Error interno del servidor' })
     }
 }
+
+export const getProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.user?.userId },
+            select: {
+                id: true,
+                email: true,
+                twoFactorEnabled: true,
+                createdAt: true,
+            }
+        })
+
+        if (!user) {
+            res.status(404).json({ error: 'Usuario no encontrado' })
+            return
+        }
+
+        res.json({ user })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ error: 'Error interno del servidor' })
+    }
+}
