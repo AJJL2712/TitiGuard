@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import dotenv from 'dotenv'
 import authRoutes from './routes/auth.routes'
 import { authenticate, AuthRequest } from './middlewares/auth.middleware'
+import passwordRoutes from './routes/password.routes'
 
 dotenv.config()
 
@@ -15,6 +16,7 @@ app.use(cors())
 app.use(express.json())
 
 app.use('/api/auth', authRoutes)
+app.use('/api/passwords', passwordRoutes)
 
 // Ruta protegida de prueba
 app.get('/api/me', authenticate, (req: AuthRequest, res) => {
