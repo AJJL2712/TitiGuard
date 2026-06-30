@@ -50,7 +50,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { email, password } = req.body
+        const { email, password, deviceToken } = req.body
 
         if (!email || !password) {
             res.status(400).json({ error: 'Email y contraseña son requeridos' })
@@ -71,16 +71,30 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return
         }
 
-        // Si tiene 2FA activo, no devolvemos tokens aún
+        // Si tiene 2FA, revisar si el dispositivo ya es de confianza
         if (user.twoFactorEnabled) {
-            res.json({
-                requiresTwoFactor: true,
-                userId: user.id,
-            })
-            return
+            let deviceTrusted = false
+
+            if (deviceToken) {
+                const trusted = await prisma.trustedDevice.findUnique({
+                    where: { token: deviceToken }
+                })
+
+                if (trusted && trusted.userId === user.id && trusted.expiresAt > new Date()) {
+                    deviceTrusted = true
+                }
+            }
+
+            if (!deviceTrusted) {
+                res.json({
+                    requiresTwoFactor: true,
+                    userId: user.id,
+                })
+                return
+            }
         }
 
-        // Sin 2FA, flujo normal
+        // Login normal (sin 2FA o dispositivo de confianza)
         const accessToken = jwt.sign(
             { userId: user.id, email: user.email },
             process.env.JWT_ACCESS_SECRET as string,
@@ -300,10 +314,25 @@ export const validate2FA = async (req: Request, res: Response): Promise<void> =>
             data: { token: refreshToken, userId: user.id, expiresAt }
         })
 
+        // Generar un device token para no pedir OTP de nuevo en este navegador
+        const deviceToken = jwt.sign(
+            { userId: user.id, type: 'device' },
+            process.env.JWT_ACCESS_SECRET as string,
+            { expiresIn: '30d' }
+        )
+
+        const deviceExpiresAt = new Date()
+        deviceExpiresAt.setDate(deviceExpiresAt.getDate() + 30)
+
+        await prisma.trustedDevice.create({
+            data: { token: deviceToken, userId: user.id, expiresAt: deviceExpiresAt }
+        })
+
         res.json({
             message: 'Login exitoso',
             accessToken,
             refreshToken,
+            deviceToken,
             user: { id: user.id, email: user.email },
         })
 

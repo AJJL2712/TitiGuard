@@ -26,7 +26,7 @@ const EMPTY_FORM: PasswordForm = {
 
 export default function Dashboard() {
     const navigate = useNavigate()
-    const { masterPassword, setMasterPassword } = useVault()
+    const { masterPassword, setMasterPassword, clearMasterPassword } = useVault()
     const [passwords, setPasswords] = useState<DecryptedPassword[]>([])
     const [loaded, setLoaded] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -125,6 +125,7 @@ export default function Dashboard() {
     const handleLogout = () => {
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
+        clearMasterPassword()
         navigate('/login')
     }
 
